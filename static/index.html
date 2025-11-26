@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Computer Agent</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f0f2f5; }
+        #chat-box { height: 500px; overflow-y: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .message { margin-bottom: 10px; padding: 10px; border-radius: 8px; max-width: 80%; word-wrap: break-word; }
+        .model { background: #e3f2fd; margin-right: auto; color: #1565c0; }
+        .user { background: #1976d2; color: white; margin-left: auto; text-align: right; }
+        .system { background: #fff3e0; color: #e65100; text-align: center; font-size: 0.9em; max-width: 100%; }
+        #input-area { display: flex; gap: 10px; }
+        input { flex: 1; padding: 15px; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
+        button { padding: 15px 30px; background: #1976d2; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #1565c0; }
+    </style>
+</head>
+<body>
+    <h1>🖥️ Gemini Computer Agent</h1>
+    <div id="chat-box"></div>
+    <div id="input-area">
+        <input type="text" id="message-input" placeholder="Type a command (e.g., 'What is on my screen?')..." autofocus>
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        const sessionId = "session_" + Math.random().toString(36).substr(2, 9);
+        const ws = new WebSocket(`ws://${window.location.host}/ws/${sessionId}`);
+        const chatBox = document.getElementById('chat-box');
+        let currentMessageDiv = null;
+
+        ws.onopen = () => addMessage("system", "Connected to Agent. Ready for commands.");
+        
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            if (data.role === 'model') {
+                // Handle streaming text
+                if (!currentMessageDiv) {
+                    currentMessageDiv = document.createElement('div');
+                    currentMessageDiv.className = 'message model';
+                    chatBox.appendChild(currentMessageDiv);
+                }
+                
+                if (data.text) {
+                    currentMessageDiv.textContent += data.text; 
+                }
+                
+                // If server signals end of turn (partial=false), reset currentMessageDiv
+                if (data.partial === false) {
+                    currentMessageDiv = null; 
+                }
+            } else if (data.role === 'system') {
+                addMessage('system', data.text);
+                // Reset current model message if a system event occurs (e.g. tool call)
+                currentMessageDiv = null;
+            }
+            
+            chatBox.scrollTop = chatBox.scrollHeight;
+        };
+
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+            if (text) {
+                addMessage('user', text);
+                ws.send(JSON.stringify({ text: text }));
+                input.value = '';
+                currentMessageDiv = null; // Ensure next model response starts new
+            }
+        }
+
+        function addMessage(role, text) {
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            div.textContent = text;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        document.getElementById('message-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>
