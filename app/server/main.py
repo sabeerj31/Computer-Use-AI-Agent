@@ -15,12 +15,15 @@ from google.adk.events.event import Event
 from google.adk.runners import Runner
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.genai import types
+from google.genai.types import Modality  # FIX: Import Modality enum
+import warnings
 
 # Import your agent and tools
+# Ensure these paths match your project structure
 from app.computer.agent import root_agent
 from app.computer.tools.screen import capture_screen
 from app.computer.tools import control
-
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 load_dotenv()
 
 APP_NAME = "Computer Use Live Agent"
@@ -29,6 +32,7 @@ STATIC_DIR = Path("static")
 session_service = InMemorySessionService()
 app = FastAPI()
 
+# Ensure static directory exists
 if not STATIC_DIR.exists():
     STATIC_DIR.mkdir()
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -48,9 +52,9 @@ def start_agent_session(session_id: str):
         session_service=session_service,
     )
 
-    # We set modalities to TEXT to save bandwidth, but the model accepts input images.
+    # FIX: Use Enum for modalities to prevent Pydantic warnings/errors
     run_config = RunConfig(
-        response_modalities=["TEXT"],
+        response_modalities=[Modality.TEXT],
     )
 
     live_request_queue = LiveRequestQueue()
@@ -72,6 +76,10 @@ async def agent_to_client_messaging(
     """
     Handles events from Agent -> Client.
     """
+    # FIX: Track accumulated text for the current turn to prevent duplicates
+    # while still allowing full text if the agent sends it all at once.
+    current_turn_text = ""
+
     try:
         async for event in live_events:
             if event is None:
@@ -91,8 +99,6 @@ async def agent_to_client_messaging(
                             await websocket.send_json({"role": "system", "text": "📸 Screenshot captured."})
 
                             # --- INJECT IMAGE AS CONTENT ---
-                            # This is the most reliable method for discrete images.
-                            # We send it as a NEW user message.
                             img_bytes = result["screenshot"]
                             
                             image_content = types.Content(
@@ -100,34 +106,39 @@ async def agent_to_client_messaging(
                                 parts=[
                                     types.Part.from_data(
                                         data=img_bytes,
-                                        mime_type="image/png"
+                                        mime_type="image/jpeg" # JPEG is safer for streaming
                                     ),
                                     types.Part.from_text(
-                                        text="[SYSTEM] Here is the screenshot you requested. Analyze it now."
+                                        text="[SYSTEM] Here is the screenshot. Analyze it."
                                     )
                                 ]
                             )
                             
-                            # Send the image content
                             await live_request_queue.send_content(image_content)
-                            
-                            # Tool response just confirms upload
                             tool_response_data = {"result": "Image uploaded to chat history."}
                         else:
-                            tool_response_data = {"error": result.get("message")}
+                            tool_response_data = {"error": result.get("message", "Unknown error")}
 
                     # 2. Control Tools
                     elif hasattr(control, tool_call.name):
                         func = getattr(control, tool_call.name)
                         try:
-                            result = func(**tool_call.args)
-                            tool_response_data = result
-                            print(f"   ✅ Executed {tool_call.name}: {result}")
+                            # Execute the tool
+                            raw_result = func(**tool_call.args)
+                            
+                            # FIX: CRITICAL - SANITIZE RESPONSE FOR 1011 ERROR
+                            # The API crashes if response is not a clean dict
+                            if isinstance(raw_result, dict):
+                                tool_response_data = raw_result
+                            else:
+                                tool_response_data = {"result": str(raw_result)}
+                                
+                            print(f"   ✅ Executed {tool_call.name}")
                             await websocket.send_json({"role": "system", "text": f"⚡ Executed: {tool_call.name}"})
                             
-                            # Wait for potential UI updates
-                            if tool_call.name == "press_key" and tool_call.args.get("key") == "enter":
-                                await asyncio.sleep(1.0) 
+                            # Small delay for UI to update after Enter/Click
+                            if tool_call.name in ["press_key", "click_mouse"]:
+                                await asyncio.sleep(0.5)
 
                         except Exception as e:
                             print(f"   ❌ Error executing {tool_call.name}: {e}")
@@ -148,20 +159,32 @@ async def agent_to_client_messaging(
                     )
                     await live_request_queue.send_tool_response(tool_response)
 
-            # --- HANDLE TEXT RESPONSES ---
-            # Fix for duplicate text: Only send if there is text.
+            # --- HANDLE TEXT RESPONSES (DEDUPLICATION) ---
             if event.content and event.content.parts:
                 for part in event.content.parts:
                     if part.text:
-                        await websocket.send_json({
-                            "role": "model",
-                            "text": part.text,
-                            "partial": True # Frontend handles appending
-                        })
+                        text_chunk = part.text
+                        
+                        # Calculate the *new* text logic
+                        # If chunk starts with what we already have, it's a cumulative update.
+                        # Otherwise, it's a new distinct chunk.
+                        if text_chunk.startswith(current_turn_text):
+                            delta = text_chunk[len(current_turn_text):]
+                        else:
+                            delta = text_chunk
+                        
+                        if delta:
+                            current_turn_text += delta
+                            await websocket.send_json({
+                                "role": "model",
+                                "text": delta,
+                                "partial": True
+                            })
 
-            # Signal end of turn to finalize message
+            # Signal end of turn
             if event.turn_complete:
-                 await websocket.send_json({
+                current_turn_text = "" # Reset for next turn
+                await websocket.send_json({
                     "role": "model",
                     "text": "",
                     "partial": False 
