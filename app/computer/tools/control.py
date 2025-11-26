@@ -1,15 +1,15 @@
 import pyautogui
 import time
 
+# Safety: Fail-safe to abort if mouse moves to top-left corner
+pyautogui.FAILSAFE = True
+
 def type_text(text: str) -> dict:
     """
     Types the given text using the keyboard.
 
     Args:
-        text (str): The text to type.
-
-    Returns:
-        dict: A dictionary with the status of the operation.
+        text: The text to type.
     """
     try:
         pyautogui.typewrite(text)
@@ -22,10 +22,7 @@ def press_key(key: str) -> dict:
     Presses a single key on the keyboard.
 
     Args:
-        key (str): The key to press (e.g., 'enter', 'esc').
-
-    Returns:
-        dict: A dictionary with the status of the operation.
+        key: The key to press (e.g., 'enter', 'esc', 'backspace', 'win').
     """
     try:
         pyautogui.press(key)
@@ -38,10 +35,7 @@ def hotkey(keys: list[str]) -> dict:
     Presses a combination of keys (hotkey).
 
     Args:
-        keys (list[str]): A list of keys to press simultaneously (e.g., ['ctrl', 'c']).
-
-    Returns:
-        dict: A dictionary with the status of the operation.
+        keys: A list of keys to press simultaneously (e.g., ['ctrl', 'c']).
     """
     try:
         pyautogui.hotkey(*keys)
@@ -49,21 +43,19 @@ def hotkey(keys: list[str]) -> dict:
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-def click_mouse(x: int, y: int, button: str = 'left') -> dict:
+def click_mouse(x: int, y: int, button: str) -> dict:
     """
     Clicks the mouse at the specified coordinates.
 
     Args:
-        x (int): The x-coordinate.
-        y (int): The y-coordinate.
-        button (str, optional): The mouse button to click ('left', 'right', 'middle'). Defaults to 'left'.
-
-    Returns:
-        dict: A dictionary with the status of the operation.
+        x: The x-coordinate on the screen/grid.
+        y: The y-coordinate on the screen/grid.
+        button: The mouse button to click. Must be 'left', 'right', or 'middle'.
     """
     try:
+        # Move first, then click. This is more human-like and reliable.
         pyautogui.click(x, y, button=button)
-        return {"status": "success", "message": f"Clicked mouse at ({x}, {y})"}
+        return {"status": "success", "message": f"Clicked {button} at ({x}, {y})"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -72,10 +64,7 @@ def scroll(amount: int) -> dict:
     Scrolls the mouse wheel.
 
     Args:
-        amount (int): The amount to scroll. Positive for up, negative for down.
-
-    Returns:
-        dict: A dictionary with the status of the operation.
+        amount: The amount to scroll. Positive for up, negative for down. (e.g. 500 or -500)
     """
     try:
         pyautogui.scroll(amount)
