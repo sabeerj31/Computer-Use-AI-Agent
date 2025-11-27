@@ -85,3 +85,12 @@ wrapt==1.17.2
 zipp==3.21.0
 pyautogui
 pillow
+pygetwindow
+pywinauto
+pygetwindow
+pywinauto 
+pyperclip
+psutil
+screen_brightness_control
+win10toast
+pywin32
