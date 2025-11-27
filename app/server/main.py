@@ -255,18 +255,10 @@ async def client_to_agent_messaging(
                 audio_bytes = base64.b64decode(data)
                 print(f"🎤 User (audio/pcm): {len(audio_bytes)} bytes")
 
-                content = types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_data(
-                            data=audio_bytes,
-                            mime_type="audio/pcm"
-                        )
-                    ]
+                # Use send_realtime with Blob for audio chunks, matching reference
+                live_request_queue.send_realtime(
+                    types.Blob(data=audio_bytes, mime_type="audio/pcm")
                 )
-
-                # NOT ASYNC — Do NOT await
-                live_request_queue.send_content(content=content)
                 continue
 
             print("⚠ Unsupported MIME type:", message)
