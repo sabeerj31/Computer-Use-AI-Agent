@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+import base64
+
 from pathlib import Path
 from typing import AsyncIterable
 
@@ -15,14 +17,15 @@ from google.adk.events.event import Event
 from google.adk.runners import Runner
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.genai import types
-from google.genai.types import Modality  # FIX: Import Modality enum
+from google.genai.types import Modality
+
 import warnings
 
-# Import your agent and tools
-# Ensure these paths match your project structure
+# Agent & Tools
 from app.computer.agent import root_agent
 from app.computer.tools.screen import capture_screen
 from app.computer.tools import control
+
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 load_dotenv()
 
@@ -38,9 +41,14 @@ if not STATIC_DIR.exists():
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-def start_agent_session(session_id: str):
+# -----------------------------------------------------------
+# FIXED: async session creator
+# -----------------------------------------------------------
+async def start_agent_session(session_id: str):
     """Starts the ADK Live Runner session."""
-    session = session_service.create_session(
+
+    # FIX -> MUST await session creation
+    session = await session_service.create_session(
         app_name=APP_NAME,
         user_id=session_id,
         session_id=session_id,
@@ -52,7 +60,6 @@ def start_agent_session(session_id: str):
         session_service=session_service,
     )
 
-    # FIX: Use Enum for modalities to prevent Pydantic warnings/errors
     run_config = RunConfig(
         response_modalities=[Modality.TEXT],
     )
@@ -68,16 +75,14 @@ def start_agent_session(session_id: str):
     return live_events, live_request_queue
 
 
+# -----------------------------------------------------------
+# AGENT ➜ CLIENT
+# -----------------------------------------------------------
 async def agent_to_client_messaging(
-    websocket: WebSocket, 
+    websocket: WebSocket,
     live_events: AsyncIterable[Event | None],
     live_request_queue: LiveRequestQueue
 ):
-    """
-    Handles events from Agent -> Client.
-    """
-    # FIX: Track accumulated text for the current turn to prevent duplicates
-    # while still allowing full text if the agent sends it all at once.
     current_turn_text = ""
 
     try:
@@ -85,138 +90,198 @@ async def agent_to_client_messaging(
             if event is None:
                 continue
 
-            # --- HANDLE TOOL CALLS ---
-            if hasattr(event, 'tool_calls') and event.tool_calls:
+            # ============================================================
+            # TOOL CALLS
+            # ============================================================
+            if hasattr(event, "tool_calls") and event.tool_calls:
                 for tool_call in event.tool_calls:
                     print(f"🛠️ Agent calling tool: {tool_call.name}")
-                    
+
                     tool_response_data = {}
-                    
-                    # 1. Screen Capture
+
+                    # -----------------------------
+                    # SCREEN CAPTURE
+                    # -----------------------------
                     if tool_call.name == "capture_screen":
                         result = capture_screen()
                         if result["status"] == "success":
-                            await websocket.send_json({"role": "system", "text": "📸 Screenshot captured."})
+                            # Notify frontend
+                            await websocket.send_json({
+                                "mime_type": "text/plain",
+                                "data": "📸 Screenshot captured.",
+                                "role": "system"
+                            })
 
-                            # --- INJECT IMAGE AS CONTENT ---
                             img_bytes = result["screenshot"]
-                            
+
+                            # Send screenshot to agent as user message
                             image_content = types.Content(
                                 role="user",
                                 parts=[
                                     types.Part.from_data(
                                         data=img_bytes,
-                                        mime_type="image/jpeg" # JPEG is safer for streaming
+                                        mime_type="image/jpeg"
                                     ),
                                     types.Part.from_text(
-                                        text="[SYSTEM] Here is the screenshot. Analyze it."
+                                        text="[SYSTEM] Screenshot received."
                                     )
                                 ]
                             )
-                            
-                            await live_request_queue.send_content(image_content)
-                            tool_response_data = {"result": "Image uploaded to chat history."}
+                            live_request_queue.send_content(content=image_content)
+                            tool_response_data = {"result": "Image uploaded"}
                         else:
                             tool_response_data = {"error": result.get("message", "Unknown error")}
 
-                    # 2. Control Tools
+                    # -----------------------------
+                    # CONTROL TOOLS (click, type, etc.)
+                    # -----------------------------
                     elif hasattr(control, tool_call.name):
                         func = getattr(control, tool_call.name)
                         try:
-                            # Execute the tool
                             raw_result = func(**tool_call.args)
-                            
-                            # FIX: CRITICAL - SANITIZE RESPONSE FOR 1011 ERROR
-                            # The API crashes if response is not a clean dict
-                            if isinstance(raw_result, dict):
-                                tool_response_data = raw_result
-                            else:
-                                tool_response_data = {"result": str(raw_result)}
-                                
-                            print(f"   ✅ Executed {tool_call.name}")
-                            await websocket.send_json({"role": "system", "text": f"⚡ Executed: {tool_call.name}"})
-                            
-                            # Small delay for UI to update after Enter/Click
+
+                            tool_response_data = (
+                                raw_result if isinstance(raw_result, dict)
+                                else {"result": str(raw_result)}
+                            )
+
+                            # ⭐ IMPORTANT FIX:
+                            # Notify frontend that a tool was executed.
+                            await websocket.send_json({
+                                "mime_type": "text/plain",
+                                "data": f"⚡ Executed tool: {tool_call.name}",
+                                "role": "system"
+                            })
+
                             if tool_call.name in ["press_key", "click_mouse"]:
                                 await asyncio.sleep(0.5)
 
                         except Exception as e:
-                            print(f"   ❌ Error executing {tool_call.name}: {e}")
+                            print(f"❌ Error executing tool: {e}")
                             tool_response_data = {"error": str(e)}
-                    
+
                     else:
                         tool_response_data = {"error": f"Unknown tool: {tool_call.name}"}
 
-                    # --- SEND TOOL RESPONSE ---
+                    # -----------------------------
+                    # SEND TOOL RESPONSE BACK TO AGENT
+                    # -----------------------------
                     tool_response = types.LiveClientToolResponse(
                         function_responses=[
                             types.FunctionResponse(
                                 name=tool_call.name,
                                 id=tool_call.id,
-                                response=tool_response_data
+                                response=tool_response_data,
                             )
                         ]
                     )
-                    await live_request_queue.send_tool_response(tool_response)
+                    live_request_queue.send_tool_response(tool_response)
 
-            # --- HANDLE TEXT RESPONSES (DEDUPLICATION) ---
+            # ============================================================
+            # TEXT FROM AGENT
+            # ============================================================
             if event.content and event.content.parts:
                 for part in event.content.parts:
                     if part.text:
-                        text_chunk = part.text
-                        
-                        # Calculate the *new* text logic
-                        # If chunk starts with what we already have, it's a cumulative update.
-                        # Otherwise, it's a new distinct chunk.
-                        if text_chunk.startswith(current_turn_text):
-                            delta = text_chunk[len(current_turn_text):]
+                        chunk = part.text
+
+                        # dedupe logic
+                        if chunk.startswith(current_turn_text):
+                            delta = chunk[len(current_turn_text):]
                         else:
-                            delta = text_chunk
-                        
+                            delta = chunk
+
                         if delta:
                             current_turn_text += delta
+
                             await websocket.send_json({
-                                "role": "model",
-                                "text": delta,
-                                "partial": True
+                                "mime_type": "text/plain",
+                                "data": delta,
+                                "role": "model"
                             })
 
-            # Signal end of turn
+            # ============================================================
+            # TURN COMPLETE
+            # ============================================================
             if event.turn_complete:
-                current_turn_text = "" # Reset for next turn
+                current_turn_text = ""
                 await websocket.send_json({
+                    "mime_type": "text/plain",
+                    "data": "",
                     "role": "model",
-                    "text": "",
-                    "partial": False 
+                    "turn_complete": True
                 })
-                
+
     except Exception as e:
         print(f"Error in agent_to_client: {e}")
 
 
+
+# -----------------------------------------------------------
+# CLIENT ➜ AGENT
+# -----------------------------------------------------------
 async def client_to_agent_messaging(
-    websocket: WebSocket, 
+    websocket: WebSocket,
     live_request_queue: LiveRequestQueue
 ):
     try:
         while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
-            
-            if "text" in message:
-                print(f"User: {message['text']}")
+            raw = await websocket.receive_text()
+            message = json.loads(raw)
+
+            mime_type = message.get("mime_type")
+            data = message.get("data")
+            role = message.get("role", "user")
+
+            # -------------------------------
+            # TEXT MESSAGE
+            # -------------------------------
+            if mime_type == "text/plain":
+                print(f"🟦 User (text): {data}")
+
+                content = types.Content(
+                    role=role,
+                    parts=[types.Part.from_text(text=data)]
+                )
+
+                # NOT ASYNC — Do NOT await
+                live_request_queue.send_content(content=content)
+                continue
+
+            # -------------------------------
+            # AUDIO MESSAGE
+            # -------------------------------
+            if mime_type == "audio/pcm":
+                audio_bytes = base64.b64decode(data)
+                print(f"🎤 User (audio/pcm): {len(audio_bytes)} bytes")
+
                 content = types.Content(
                     role="user",
-                    parts=[types.Part.from_text(text=message["text"])]
+                    parts=[
+                        types.Part.from_data(
+                            data=audio_bytes,
+                            mime_type="audio/pcm"
+                        )
+                    ]
                 )
+
+                # NOT ASYNC — Do NOT await
                 live_request_queue.send_content(content=content)
-                
+                continue
+
+            print("⚠ Unsupported MIME type:", message)
+
     except WebSocketDisconnect:
         print("Client disconnected")
+
     except Exception as e:
-        print(f"Error in client_to_agent: {e}")
+        print("❌ Error in client_to_agent:", e)
 
 
+
+# -----------------------------------------------------------
+# ROUTES
+# -----------------------------------------------------------
 @app.get("/")
 async def root():
     return FileResponse(STATIC_DIR / "index.html")
@@ -227,7 +292,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
     print(f"Client connected: {session_id}")
 
-    live_events, live_request_queue = start_agent_session(session_id)
+    # FIX: await session startup
+    live_events, live_request_queue = await start_agent_session(session_id)
 
     agent_task = asyncio.create_task(
         agent_to_client_messaging(websocket, live_events, live_request_queue)
@@ -237,7 +303,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     )
 
     done, pending = await asyncio.wait(
-        [agent_task, client_task], 
+        [agent_task, client_task],
         return_when=asyncio.FIRST_COMPLETED
     )
 

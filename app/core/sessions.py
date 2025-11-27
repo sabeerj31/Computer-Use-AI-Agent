@@ -1,17 +1,18 @@
+# session.py
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 
 APP_NAME = "computer_vision_app"
-USER_ID = "client_user"
-SESSION_ID = "session_01"
 
+# Shared session service for the whole backend
 session_service = InMemorySessionService()
 
-async def create_session():
+async def create_session(user_id: str, session_id: str):
     """
-    Creates a new session for the agent.
+    Create and return a new ADK session.
     """
-    await session_service.create_session(
+    session = await session_service.create_session(
         app_name=APP_NAME,
-        user_id=USER_ID,
-        session_id=SESSION_ID
+        user_id=user_id,
+        session_id=session_id
     )
+    return session
