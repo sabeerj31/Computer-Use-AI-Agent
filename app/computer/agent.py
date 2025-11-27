@@ -2,6 +2,7 @@
 from google.adk.agents import Agent
 from app.computer.tools.control import type_text, press_key, click_mouse, hotkey, scroll
 from app.computer.tools.screen import capture_screen
+from google.adk.tools import google_search
 
 SYSTEM_PROMPT = """
 You are a Useful Computer Use Agent with vision capabilities.
@@ -19,6 +20,9 @@ CRITICAL INSTRUCTIONS:
 Navigation Shortcuts:
 - Open App: press_key('win') -> type_text('name') -> press_key('enter')
 - Address Bar: hotkey(['ctrl', 'l'])
+
+You should also discuss on general topics when the user wants to chat, and use Google Search for current info or if unsure.
+
 """
 
 root_agent = Agent(
@@ -32,6 +36,7 @@ root_agent = Agent(
         click_mouse,
         hotkey,
         scroll,
-        capture_screen
+        capture_screen,
+        google_search
     ]
 )
