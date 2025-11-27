@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import AsyncIterable
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -44,7 +44,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # -----------------------------------------------------------
 # FIXED: async session creator
 # -----------------------------------------------------------
-async def start_agent_session(session_id: str):
+async def start_agent_session(session_id: str, is_audio: bool = False):
     """Starts the ADK Live Runner session."""
 
     # FIX -> MUST await session creation
@@ -60,9 +60,25 @@ async def start_agent_session(session_id: str):
         session_service=session_service,
     )
 
-    run_config = RunConfig(
-        response_modalities=[Modality.TEXT],
+    # Set response modality
+    modality = "AUDIO" if is_audio else "TEXT"
+
+    # Create speech config with voice settings
+    speech_config = types.SpeechConfig(
+        voice_config=types.VoiceConfig(
+            # Puck, Charon, Kore, Fenrir, Aoede, Leda, Orus, and Zephyr
+            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Puck")
+        )
     )
+
+    # Create run config with basic settings
+    config = {"response_modalities": [modality], "speech_config": speech_config}
+
+    # Add output_audio_transcription when audio is enabled to get both audio and text
+    if is_audio:
+        config["output_audio_transcription"] = {}
+
+    run_config = RunConfig(**config)
 
     live_request_queue = LiveRequestQueue()
 
@@ -200,6 +216,24 @@ async def agent_to_client_messaging(
                                 "role": "model"
                             })
 
+                    # ============================================================
+                    # AUDIO FROM AGENT
+                    # ============================================================
+                    is_audio = (
+                        part.inline_data
+                        and part.inline_data.mime_type
+                        and part.inline_data.mime_type.startswith("audio/pcm")
+                    )
+                    if is_audio:
+                        audio_data = part.inline_data and part.inline_data.data
+                        if audio_data:
+                            await websocket.send_json({
+                                "mime_type": "audio/pcm",
+                                "data": base64.b64encode(audio_data).decode("ascii"),
+                                "role": "model"
+                            })
+                            print(f"🔊 Agent (audio/pcm): {len(audio_data)} bytes")
+
             # ============================================================
             # TURN COMPLETE
             # ============================================================
@@ -280,12 +314,18 @@ async def root():
 
 
 @app.websocket("/ws/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: str):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    session_id: str,
+    is_audio: str = Query(...)
+):
     await websocket.accept()
-    print(f"Client connected: {session_id}")
+    print(f"Client connected: {session_id}, audio mode: {is_audio}")
 
-    # FIX: await session startup
-    live_events, live_request_queue = await start_agent_session(session_id)
+    # FIX: await session startup with audio mode
+    live_events, live_request_queue = await start_agent_session(
+        session_id, is_audio == "true"
+    )
 
     agent_task = asyncio.create_task(
         agent_to_client_messaging(websocket, live_events, live_request_queue)
