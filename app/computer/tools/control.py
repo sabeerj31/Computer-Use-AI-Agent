@@ -11,18 +11,14 @@ import psutil
 import pyperclip
 import screen_brightness_control as sbc
 from win10toast import ToastNotifier
-
-# For real volume control
 from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+import ctypes
 
 pyautogui.FAILSAFE = True
 
-
-# ============================================================
 # KEYBOARD / MOUSE BASICS
-# ============================================================
 
 def type_text(text: str) -> dict:
     try:
@@ -87,9 +83,7 @@ def move_cursor_smooth(x: int, y: int, steps: int = 50) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-# ============================================================
 # WINDOW MANAGEMENT
-# ============================================================
 
 def list_windows() -> dict:
     try:
@@ -188,6 +182,7 @@ def open_window(path: str):
 
 
 # Snap layout
+
 def snap_left(title: str):
     try:
         focus_window(title)
@@ -244,9 +239,7 @@ def tile_four_windows(a: str, b: str, c: str, d: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-# ============================================================
 # DESKTOP CONTROL
-# ============================================================
 
 def unfocus_all():
     try:
@@ -294,11 +287,8 @@ def get_window_info(title: str):
         return {"status": "error", "message": str(e)}
 
 
-# ============================================================
-# REAL VOLUME CONTROL (PYCAW)
-# ============================================================
 
-import ctypes
+# REAL VOLUME CONTROL (PYCAW)
 
 def _trigger_volume_osd():
     try:
@@ -376,9 +366,7 @@ def volume_down() -> dict:
         return {"status": "error", "message": str(e)}
     
 
-# ============================================================
 # BRIGHTNESS CONTROL
-# ============================================================
 
 def set_brightness(level: int):
     try:
@@ -406,9 +394,7 @@ def decrease_brightness(amount: int = 10):
         return {"status": "error", "message": str(e)}
 
 
-# ============================================================
 # CLIPBOARD
-# ============================================================
 
 def copy_text():
     try:
@@ -426,9 +412,7 @@ def paste_text():
         return {"status": "error", "message": str(e)}
 
 
-# ============================================================
 # FILE SYSTEM
-# ============================================================
 
 def list_folder(path: str):
     try:
@@ -494,9 +478,7 @@ def write_file(path: str, content: str):
         return {"status": "error", "message": str(e)}
 
 
-# ============================================================
 # MEDIA CONTROL
-# ============================================================
 
 def play_pause():
     try:
@@ -522,9 +504,7 @@ def prev_track():
         return {"status": "error", "message": str(e)}
 
 
-# ============================================================
 # SYSTEM INFO
-# ============================================================
 
 def get_cpu_usage():
     try:
@@ -578,9 +558,7 @@ def kill_process(name: str):
         return {"status": "error", "message": str(e)}
 
 
-# ============================================================
 # INSTALLED APPS DETECTION
-# ============================================================
 
 def list_installed_apps():
     try:
@@ -613,9 +591,7 @@ def is_installed(app_name: str):
         return {"status": "error", "message": str(e)}
 
 
-# ============================================================
 # CHROME PROFILE & GUEST MODE
-# ============================================================
 
 def open_chrome_guest():
     try:

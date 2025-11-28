@@ -39,7 +39,7 @@ def analyze_screen(question: str = "Describe the visible content on the screen i
         client = Client(api_key=api_key)
 
         # 3. Call the Vision Model (The "Image Agent")
-        # We use the Flash model for speed
+        # Using the Flash model for speed
         response = client.models.generate_content(
             model="gemini-2.0-flash",
             contents=[

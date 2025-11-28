@@ -8,7 +8,7 @@ export async function startAudioPlayerWorklet() {
     sampleRate: 24000,
   });
 
-  // 2. Load your custom processor code
+  // 2. Load custom processor code
   const workletURL = new URL("./pcm-player-processor.js", import.meta.url);
   await audioContext.audioWorklet.addModule(workletURL);
 
@@ -21,6 +21,6 @@ export async function startAudioPlayerWorklet() {
   // 4. Connect to the destination
   audioPlayerNode.connect(audioContext.destination);
 
-  // The audioPlayerNode.port is how we send messages (audio data) to the processor
+  // The audioPlayerNode.port is to send messages (audio data) to the processor
   return [audioPlayerNode, audioContext];
 }

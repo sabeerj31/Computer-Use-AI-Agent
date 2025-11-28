@@ -2,15 +2,12 @@ import asyncio
 import json
 import os
 import base64
-
 from pathlib import Path
 from typing import AsyncIterable
-
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-
 from google.adk.agents import LiveRequestQueue
 from google.adk.agents.run_config import RunConfig
 from google.adk.events.event import Event
@@ -18,12 +15,8 @@ from google.adk.runners import Runner
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.genai import types
 from google.genai.types import Modality
-
 import warnings
-
-# Agent & Tools
 from app.computer.agent import root_agent
-# CHANGED: Import analyze_screen instead of capture_screen
 from app.computer.tools.vision import analyze_screen
 from app.computer.tools import control
 
@@ -36,19 +29,13 @@ STATIC_DIR = Path("static")
 session_service = InMemorySessionService()
 app = FastAPI()
 
-# Ensure static directory exists
 if not STATIC_DIR.exists():
     STATIC_DIR.mkdir()
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-
-# -----------------------------------------------------------
-# FIXED: async session creator
-# -----------------------------------------------------------
 async def start_agent_session(session_id: str, is_audio: bool = False):
     """Starts the ADK Live Runner session."""
 
-    # FIX -> MUST await session creation
     session = await session_service.create_session(
         app_name=APP_NAME,
         user_id=session_id,
@@ -92,9 +79,7 @@ async def start_agent_session(session_id: str, is_audio: bool = False):
     return live_events, live_request_queue
 
 
-# -----------------------------------------------------------
 # AGENT ➜ CLIENT
-# -----------------------------------------------------------
 async def agent_to_client_messaging(
     websocket: WebSocket,
     live_events: AsyncIterable[Event | None],
@@ -107,18 +92,14 @@ async def agent_to_client_messaging(
             if event is None:
                 continue
 
-            # ============================================================
             # TOOL CALLS
-            # ============================================================
             if hasattr(event, "tool_calls") and event.tool_calls:
                 for tool_call in event.tool_calls:
                     print(f"🛠️ Agent calling tool: {tool_call.name}")
 
                     tool_response_data = {}
 
-                    # -----------------------------
                     # VISION / ANALYZE SCREEN
-                    # -----------------------------
                     if tool_call.name == "analyze_screen":
                         # Notify frontend that we are looking
                         await websocket.send_json({
@@ -135,9 +116,7 @@ async def agent_to_client_messaging(
                             print(f"❌ Error analyzing screen: {e}")
                             tool_response_data = {"error": str(e)}
 
-                    # -----------------------------
                     # CONTROL TOOLS (click, type, etc.)
-                    # -----------------------------
                     elif hasattr(control, tool_call.name):
                         func = getattr(control, tool_call.name)
                         try:
@@ -165,9 +144,7 @@ async def agent_to_client_messaging(
                     else:
                         tool_response_data = {"error": f"Unknown tool: {tool_call.name}"}
 
-                    # -----------------------------
                     # SEND TOOL RESPONSE BACK TO AGENT
-                    # -----------------------------
                     tool_response = types.LiveClientToolResponse(
                         function_responses=[
                             types.FunctionResponse(
@@ -179,14 +156,11 @@ async def agent_to_client_messaging(
                     )
                     live_request_queue.send_tool_response(tool_response)
 
-            # ============================================================
             # TEXT FROM AGENT
-            # ============================================================
             if event.content and event.content.parts:
                 for part in event.content.parts:
                     if part.text:
                         chunk = part.text
-
                         # dedupe logic
                         if chunk.startswith(current_turn_text):
                             delta = chunk[len(current_turn_text):]
@@ -202,9 +176,7 @@ async def agent_to_client_messaging(
                                 "role": "model"
                             })
 
-                    # ============================================================
                     # AUDIO FROM AGENT
-                    # ============================================================
                     is_audio = (
                         part.inline_data
                         and part.inline_data.mime_type
@@ -220,9 +192,7 @@ async def agent_to_client_messaging(
                             })
                             print(f"🔊 Agent (audio/pcm): {len(audio_data)} bytes")
 
-            # ============================================================
             # TURN COMPLETE
-            # ============================================================
             if event.turn_complete:
                 current_turn_text = ""
                 await websocket.send_json({
@@ -236,9 +206,7 @@ async def agent_to_client_messaging(
         print(f"Error in agent_to_client: {e}")
 
 
-# -----------------------------------------------------------
 # CLIENT ➜ AGENT
-# -----------------------------------------------------------
 async def client_to_agent_messaging(
     websocket: WebSocket,
     live_request_queue: LiveRequestQueue
@@ -252,9 +220,7 @@ async def client_to_agent_messaging(
             data = message.get("data")
             role = message.get("role", "user")
 
-            # -------------------------------
             # TEXT MESSAGE
-            # -------------------------------
             if mime_type == "text/plain":
                 print(f"🟦 User (text): {data}")
 
@@ -262,14 +228,11 @@ async def client_to_agent_messaging(
                     role=role,
                     parts=[types.Part.from_text(text=data)]
                 )
-
                 # NOT ASYNC — Do NOT await
                 live_request_queue.send_content(content=content)
                 continue
 
-            # -------------------------------
             # AUDIO MESSAGE
-            # -------------------------------
             if mime_type == "audio/pcm":
                 audio_bytes = base64.b64decode(data)
                 print(f"🎤 User (audio/pcm): {len(audio_bytes)} bytes")
@@ -289,9 +252,7 @@ async def client_to_agent_messaging(
         print("❌ Error in client_to_agent:", e)
 
 
-# -----------------------------------------------------------
 # ROUTES
-# -----------------------------------------------------------
 @app.get("/")
 async def root():
     return FileResponse(STATIC_DIR / "index.html")

@@ -93,8 +93,8 @@ root_agent = Agent(
     instruction=SYSTEM_PROMPT,
     tools=[
 
-   # New Vision Tool
-       analyze_screen,
+        # New Vision Tool
+        analyze_screen,
 
         # Keyboard / mouse
         type_text, type_human, press_key, click_mouse, hotkey,

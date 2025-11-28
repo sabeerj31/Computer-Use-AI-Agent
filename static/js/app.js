@@ -7,7 +7,7 @@
  */
 
 // Global variables
-// DO NOT store sessionId globally
+
 function newSessionId() {
   return Math.random().toString().substring(2);
 }
