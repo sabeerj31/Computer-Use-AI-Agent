@@ -94,3 +94,5 @@ psutil
 screen_brightness_control
 win10toast
 pywin32
+pycaw==20181226
+comtypes

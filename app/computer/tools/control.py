@@ -12,12 +12,17 @@ import pyperclip
 import screen_brightness_control as sbc
 from win10toast import ToastNotifier
 
+# For real volume control
+from ctypes import cast, POINTER
+from comtypes import CLSCTX_ALL
+from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+
 pyautogui.FAILSAFE = True
 
 
-# =============================
+# ============================================================
 # KEYBOARD / MOUSE BASICS
-# =============================
+# ============================================================
 
 def type_text(text: str) -> dict:
     try:
@@ -41,7 +46,7 @@ def type_human(text: str) -> dict:
 def press_key(key: str) -> dict:
     try:
         pyautogui.press(key)
-        return {"status": "success", "message": f"Pressed key: {key}"}
+        return {"status": "success", "message": f"Pressed: {key}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -49,7 +54,7 @@ def press_key(key: str) -> dict:
 def hotkey(keys: list[str]) -> dict:
     try:
         pyautogui.hotkey(*keys)
-        return {"status": "success", "message": f"Pressed hotkey: {'+'.join(keys)}"}
+        return {"status": "success", "message": f"Pressed hotkey: {keys}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -57,7 +62,7 @@ def hotkey(keys: list[str]) -> dict:
 def click_mouse(x: int, y: int, button: str) -> dict:
     try:
         pyautogui.click(x, y, button=button)
-        return {"status": "success", "message": f"Clicked {button} at ({x},{y})"}
+        return {"status": "success", "message": f"Clicked {button} at {x},{y}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -65,7 +70,7 @@ def click_mouse(x: int, y: int, button: str) -> dict:
 def scroll(amount: int) -> dict:
     try:
         pyautogui.scroll(amount)
-        return {"status": "success", "message": f"Scrolled by {amount}"}
+        return {"status": "success", "message": f"Scrolled {amount}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -82,9 +87,9 @@ def move_cursor_smooth(x: int, y: int, steps: int = 50) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-# =============================
+# ============================================================
 # WINDOW MANAGEMENT
-# =============================
+# ============================================================
 
 def list_windows() -> dict:
     try:
@@ -96,8 +101,7 @@ def list_windows() -> dict:
 
 def window_exists(title: str) -> dict:
     try:
-        exists = len(gw.getWindowsWithTitle(title)) > 0
-        return {"status": "success", "exists": exists}
+        return {"status": "success", "exists": len(gw.getWindowsWithTitle(title)) > 0}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -119,64 +123,72 @@ def focus_window(title: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def minimize_window(title: str) -> dict:
+def minimize_window(title: str):
     try:
         win = _get_window(title)
         win.minimize()
-        return {"status": "success", "message": f"Minimized {win.title}"}
+        return {"status": "success", "message": f"Minimized {title}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def maximize_window(title: str) -> dict:
+def maximize_window(title: str):
     try:
         win = _get_window(title)
         win.maximize()
-        return {"status": "success", "message": f"Maximized {win.title}"}
+        return {"status": "success", "message": f"Maximized {title}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def restore_window(title: str) -> dict:
+def restore_window(title: str):
     try:
         win = _get_window(title)
         win.restore()
-        return {"status": "success", "message": f"Restored {win.title}"}
+        return {"status": "success", "message": f"Restored {title}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def move_window(title: str, x: int, y: int) -> dict:
+def move_window(title: str, x: int, y: int):
     try:
         win = _get_window(title)
         win.moveTo(x, y)
-        return {"status": "success", "message": f"Moved {win.title}"}
+        return {"status": "success", "message": f"Moved {title}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def resize_window(title: str, width: int, height: int) -> dict:
+def resize_window(title: str, width: int, height: int):
     try:
         win = _get_window(title)
         win.resizeTo(width, height)
-        return {"status": "success", "message": f"Resized {win.title}"}
+        return {"status": "success", "message": f"Resized {title}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def close_window(title: str) -> dict:
+def close_window(title: str):
     try:
         win = _get_window(title)
         hwnd = win._hWnd
         app = Application().connect(handle=hwnd)
         app.window(handle=hwnd).close()
-        return {"status": "success", "message": f"Closed {win.title}"}
+        return {"status": "success", "message": f"Closed {title}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-# Snapping
-def snap_left(title: str) -> dict:
+def open_window(path: str):
+    try:
+        subprocess.Popen(path)
+        return {"status": "success", "message": f"Opened {path}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# Snap layout
+def snap_left(title: str):
     try:
         focus_window(title)
         pyautogui.hotkey('win', 'left')
@@ -185,7 +197,7 @@ def snap_left(title: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def snap_right(title: str) -> dict:
+def snap_right(title: str):
     try:
         focus_window(title)
         pyautogui.hotkey('win', 'right')
@@ -194,7 +206,7 @@ def snap_right(title: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def snap_top(title: str) -> dict:
+def snap_top(title: str):
     try:
         focus_window(title)
         pyautogui.hotkey('win', 'up')
@@ -203,15 +215,14 @@ def snap_top(title: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def snap_bottom(title: str) -> dict:
+def snap_bottom(title: str):
     try:
         focus_window(title)
         pyautogui.hotkey('win', 'down')
         return {"status": "success", "message": "Snapped bottom"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-
+    
 def tile_two_windows(left_title: str, right_title: str) -> dict:
     try:
         snap_left(left_title)
@@ -233,8 +244,11 @@ def tile_four_windows(a: str, b: str, c: str, d: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-# Desktop control
-def unfocus_all() -> dict:
+# ============================================================
+# DESKTOP CONTROL
+# ============================================================
+
+def unfocus_all():
     try:
         pyautogui.hotkey('win', 'd')
         return {"status": "success", "message": "Desktop shown"}
@@ -242,7 +256,7 @@ def unfocus_all() -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def minimize_all() -> dict:
+def minimize_all():
     try:
         pyautogui.hotkey('win', 'm')
         return {"status": "success", "message": "All minimized"}
@@ -250,7 +264,7 @@ def minimize_all() -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def restore_all() -> dict:
+def restore_all():
     try:
         pyautogui.hotkey('win', 'shift', 'm')
         return {"status": "success", "message": "Restored all windows"}
@@ -258,7 +272,7 @@ def restore_all() -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def get_active_window() -> dict:
+def get_active_window():
     try:
         hwnd = win32gui.GetForegroundWindow()
         return {"status": "success", "title": win32gui.GetWindowText(hwnd)}
@@ -266,7 +280,7 @@ def get_active_window() -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def get_window_info(title: str) -> dict:
+def get_window_info(title: str):
     try:
         win = _get_window(title)
         return {
@@ -274,23 +288,52 @@ def get_window_info(title: str) -> dict:
             "x": win.left,
             "y": win.top,
             "width": win.width,
-            "height": win.height
+            "height": win.height,
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-# =============================
-# VOLUME CONTROL
-# =============================
+# ============================================================
+# REAL VOLUME CONTROL (PYCAW)
+# ============================================================
+
+import ctypes
+
+def _trigger_volume_osd():
+    try:
+        # Send volume up then down (or reverse) to trigger the popup
+        ctypes.windll.user32.keybd_event(0xAF, 0, 0, 0)  # Volume Up key
+        ctypes.windll.user32.keybd_event(0xAF, 0, 2, 0)  # Key release
+        ctypes.windll.user32.keybd_event(0xAE, 0, 0, 0)  # Volume Down key
+        ctypes.windll.user32.keybd_event(0xAE, 0, 2, 0)  # Key release
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def _get_volume_interface():
+    devices = AudioUtilities.GetSpeakers()
+    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+    return cast(interface, POINTER(IAudioEndpointVolume))
+
+
+def get_volume() -> dict:
+    try:
+        volume = _get_volume_interface()
+        level = round(volume.GetMasterVolumeLevelScalar() * 100)
+        _trigger_volume_osd()
+        return {"status": "success", "volume": level}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 
 def set_volume(level: int) -> dict:
     try:
         level = max(0, min(100, level))
-        for _ in range(50):
-            pyautogui.press("volumedown")
-        for _ in range(level // 2):
-            pyautogui.press("volumeup")
+        volume = _get_volume_interface()
+        volume.SetMasterVolumeLevelScalar(level / 100, None)
+        _trigger_volume_osd()
         return {"status": "success", "message": f"Volume set to {level}%"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -298,7 +341,9 @@ def set_volume(level: int) -> dict:
 
 def mute() -> dict:
     try:
-        pyautogui.press("volumemute")
+        volume = _get_volume_interface()
+        volume.SetMute(1, None)
+        _trigger_volume_osd()
         return {"status": "success", "message": "Muted"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -306,15 +351,17 @@ def mute() -> dict:
 
 def unmute() -> dict:
     try:
-        pyautogui.press("volumemute")
+        volume = _get_volume_interface()
+        volume.SetMute(0, None)
+        _trigger_volume_osd()
         return {"status": "success", "message": "Unmuted"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-
+    
 def volume_up() -> dict:
     try:
         pyautogui.press("volumeup")
+        _trigger_volume_osd()
         return {"status": "success", "message": "Volume up"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -323,16 +370,17 @@ def volume_up() -> dict:
 def volume_down() -> dict:
     try:
         pyautogui.press("volumedown")
+        _trigger_volume_osd()
         return {"status": "success", "message": "Volume down"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+    
 
-
-# =============================
+# ============================================================
 # BRIGHTNESS CONTROL
-# =============================
+# ============================================================
 
-def set_brightness(level: int) -> dict:
+def set_brightness(level: int):
     try:
         sbc.set_brightness(level)
         return {"status": "success", "message": f"Brightness set to {level}%"}
@@ -340,7 +388,7 @@ def set_brightness(level: int) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def increase_brightness(amount: int = 10) -> dict:
+def increase_brightness(amount: int = 10):
     try:
         current = sbc.get_brightness()[0]
         sbc.set_brightness(min(100, current + amount))
@@ -349,7 +397,7 @@ def increase_brightness(amount: int = 10) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def decrease_brightness(amount: int = 10) -> dict:
+def decrease_brightness(amount: int = 10):
     try:
         current = sbc.get_brightness()[0]
         sbc.set_brightness(max(0, current - amount))
@@ -358,20 +406,19 @@ def decrease_brightness(amount: int = 10) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-# =============================
+# ============================================================
 # CLIPBOARD
-# =============================
+# ============================================================
 
-def copy_text() -> dict:
+def copy_text():
     try:
         hotkey(["ctrl", "c"])
-        content = pyperclip.paste()
-        return {"status": "success", "content": content}
+        return {"status": "success", "content": pyperclip.paste()}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def paste_text() -> dict:
+def paste_text():
     try:
         hotkey(["ctrl", "v"])
         return {"status": "success", "message": "Pasted"}
@@ -379,18 +426,18 @@ def paste_text() -> dict:
         return {"status": "error", "message": str(e)}
 
 
-# =============================
-# FILE TOOLS (DESTRUCTIVE INCLUDED)
-# =============================
+# ============================================================
+# FILE SYSTEM
+# ============================================================
 
-def list_folder(path: str) -> dict:
+def list_folder(path: str):
     try:
         return {"status": "success", "items": os.listdir(path)}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def create_folder(path: str) -> dict:
+def create_folder(path: str):
     try:
         os.makedirs(path, exist_ok=True)
         return {"status": "success", "message": "Folder created"}
@@ -398,7 +445,7 @@ def create_folder(path: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def delete_file(path: str) -> dict:
+def delete_file(path: str):
     try:
         os.remove(path)
         return {"status": "success", "message": "File deleted"}
@@ -406,7 +453,7 @@ def delete_file(path: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def delete_folder(path: str) -> dict:
+def delete_folder(path: str):
     try:
         shutil.rmtree(path)
         return {"status": "success", "message": "Folder deleted"}
@@ -414,7 +461,7 @@ def delete_folder(path: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def rename_file(old: str, new: str) -> dict:
+def rename_file(old: str, new: str):
     try:
         os.rename(old, new)
         return {"status": "success", "message": "File renamed"}
@@ -422,7 +469,7 @@ def rename_file(old: str, new: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def move_file(src: str, dst: str) -> dict:
+def move_file(src: str, dst: str):
     try:
         shutil.move(src, dst)
         return {"status": "success", "message": "File moved"}
@@ -430,7 +477,7 @@ def move_file(src: str, dst: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def read_file(path: str) -> dict:
+def read_file(path: str):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return {"status": "success", "content": f.read()}
@@ -438,7 +485,7 @@ def read_file(path: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def write_file(path: str, content: str) -> dict:
+def write_file(path: str, content: str):
     try:
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
@@ -447,19 +494,19 @@ def write_file(path: str, content: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-# =============================
+# ============================================================
 # MEDIA CONTROL
-# =============================
+# ============================================================
 
-def play_pause() -> dict:
+def play_pause():
     try:
         pyautogui.press("playpause")
-        return {"status": "success", "message": "Play/Pause"}
+        return {"status": "success", "message": "Play/Pause toggled"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def next_track() -> dict:
+def next_track():
     try:
         pyautogui.press("nexttrack")
         return {"status": "success", "message": "Next track"}
@@ -467,7 +514,7 @@ def next_track() -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def prev_track() -> dict:
+def prev_track():
     try:
         pyautogui.press("prevtrack")
         return {"status": "success", "message": "Previous track"}
@@ -475,18 +522,18 @@ def prev_track() -> dict:
         return {"status": "error", "message": str(e)}
 
 
-# =============================
+# ============================================================
 # SYSTEM INFO
-# =============================
+# ============================================================
 
-def get_cpu_usage() -> dict:
+def get_cpu_usage():
     try:
         return {"status": "success", "cpu": psutil.cpu_percent(interval=1)}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def get_ram_usage() -> dict:
+def get_ram_usage():
     try:
         ram = psutil.virtual_memory()
         return {"status": "success", "ram_percent": ram.percent}
@@ -494,27 +541,26 @@ def get_ram_usage() -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def get_battery() -> dict:
+def get_battery():
     try:
         batt = psutil.sensors_battery()
         return {
             "status": "success",
             "percent": batt.percent,
-            "plugged": batt.power_plugged
+            "plugged": batt.power_plugged,
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def get_uptime() -> dict:
+def get_uptime():
     try:
-        uptime = time.time() - psutil.boot_time()
-        return {"status": "success", "uptime_seconds": uptime}
+        return {"status": "success", "uptime_seconds": time.time() - psutil.boot_time()}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def list_processes() -> dict:
+def list_processes():
     try:
         procs = [p.info for p in psutil.process_iter(['pid', 'name'])]
         return {"status": "success", "processes": procs}
@@ -522,11 +568,74 @@ def list_processes() -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def kill_process(name: str) -> dict:
+def kill_process(name: str):
     try:
         for p in psutil.process_iter(['name']):
             if name.lower() in p.info['name'].lower():
                 p.kill()
-        return {"status": "success", "message": f"Killed processes matching {name}"}
+        return {"status": "success", "message": f"Killed '{name}'"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+# ============================================================
+# INSTALLED APPS DETECTION
+# ============================================================
+
+def list_installed_apps():
+    try:
+        paths = [
+            r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs",
+            os.path.expanduser(r"~\AppData\Roaming\Microsoft\Windows\Start Menu\Programs"),
+        ]
+
+        apps = set()
+
+        for path in paths:
+            if os.path.exists(path):
+                for root, dirs, files in os.walk(path):
+                    for f in files:
+                        if f.endswith(".lnk"):
+                            apps.add(os.path.splitext(f)[0].lower())
+
+        return {"status": "success", "apps": list(apps)}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def is_installed(app_name: str):
+    try:
+        installed = list_installed_apps()["apps"]
+        app_name = app_name.lower()
+        exists = any(app_name in a for a in installed)
+        return {"status": "success", "installed": exists}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ============================================================
+# CHROME PROFILE & GUEST MODE
+# ============================================================
+
+def open_chrome_guest():
+    try:
+        subprocess.Popen([
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            "--guest"
+        ])
+        return {"status": "success", "message": "Opened Chrome in Guest mode"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def open_chrome_profile(profile_name: str) -> dict:
+    try:
+        subprocess.Popen([
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            f"--profile-directory={profile_name}"
+        ])
+        return {"status": "success", "message": f"Opened Chrome: {profile_name}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    
+

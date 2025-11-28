@@ -23,7 +23,8 @@ import warnings
 
 # Agent & Tools
 from app.computer.agent import root_agent
-from app.computer.tools.screen import capture_screen
+# CHANGED: Import analyze_screen instead of capture_screen
+from app.computer.tools.vision import analyze_screen
 from app.computer.tools import control
 
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
@@ -116,37 +117,23 @@ async def agent_to_client_messaging(
                     tool_response_data = {}
 
                     # -----------------------------
-                    # SCREEN CAPTURE
+                    # VISION / ANALYZE SCREEN
                     # -----------------------------
-                    if tool_call.name == "capture_screen":
-                        result = capture_screen()
-                        if result["status"] == "success":
-                            # Notify frontend
-                            await websocket.send_json({
-                                "mime_type": "text/plain",
-                                "data": "📸 Screenshot captured.",
-                                "role": "system"
-                            })
+                    if tool_call.name == "analyze_screen":
+                        # Notify frontend that we are looking
+                        await websocket.send_json({
+                            "mime_type": "text/plain",
+                            "data": "👀 Analyzing screen content...",
+                            "role": "system"
+                        })
 
-                            img_bytes = result["screenshot"]
-
-                            # Send screenshot to agent as user message
-                            image_content = types.Content(
-                                role="user",
-                                parts=[
-                                    types.Part.from_data(
-                                        data=img_bytes,
-                                        mime_type="image/jpeg"
-                                    ),
-                                    types.Part.from_text(
-                                        text="[SYSTEM] Screenshot received."
-                                    )
-                                ]
-                            )
-                            live_request_queue.send_content(content=image_content)
-                            tool_response_data = {"result": "Image uploaded"}
-                        else:
-                            tool_response_data = {"error": result.get("message", "Unknown error")}
+                        try:
+                            # Run in thread because it calls Gemini API (blocking)
+                            result = await asyncio.to_thread(analyze_screen, **tool_call.args)
+                            tool_response_data = result
+                        except Exception as e:
+                            print(f"❌ Error analyzing screen: {e}")
+                            tool_response_data = {"error": str(e)}
 
                     # -----------------------------
                     # CONTROL TOOLS (click, type, etc.)
@@ -161,7 +148,6 @@ async def agent_to_client_messaging(
                                 else {"result": str(raw_result)}
                             )
 
-                            # ⭐ IMPORTANT FIX:
                             # Notify frontend that a tool was executed.
                             await websocket.send_json({
                                 "mime_type": "text/plain",
@@ -250,7 +236,6 @@ async def agent_to_client_messaging(
         print(f"Error in agent_to_client: {e}")
 
 
-
 # -----------------------------------------------------------
 # CLIENT ➜ AGENT
 # -----------------------------------------------------------
@@ -289,7 +274,7 @@ async def client_to_agent_messaging(
                 audio_bytes = base64.b64decode(data)
                 print(f"🎤 User (audio/pcm): {len(audio_bytes)} bytes")
 
-                # Use send_realtime with Blob for audio chunks, matching reference
+                # Use send_realtime with Blob for audio chunks
                 live_request_queue.send_realtime(
                     types.Blob(data=audio_bytes, mime_type="audio/pcm")
                 )
@@ -302,7 +287,6 @@ async def client_to_agent_messaging(
 
     except Exception as e:
         print("❌ Error in client_to_agent:", e)
-
 
 
 # -----------------------------------------------------------
