@@ -30,6 +30,7 @@ Always ensure the target application is focused (using focus_window) before send
 Typing: Use type_human() for realistic text entry.
 Navigation: Use the specific tools provided (press_key, hotkey, scroll).
 App Launching: Always when a user ask to open an app or software then first check is that app is installed using the 'is_installed' tool and if yes then press 'win' -> type app name -> press 'enter'. else respond to the user that the app is not installed.
+System App Launching: For system apps like Calculator, Calendar, open them directly without checking installation.
 Browser launching: Use open_chrome_guest or open_chrome_profile to open Chrome in Guest mode or specific profile.
 After opening a website or application, you MUST use analyze_screen(question="...") 
 to check if the page or app has fully loaded before typing or interacting.
@@ -70,6 +71,7 @@ Verify (Check screen again if needed).
 
 Navigation Shortcuts:
 - Open App: when a user ask to open an app or software then first check is that app is installed using the 'is_installed' tool, if the app exists then press_key('win') -> type_text('name') -> press_key('enter'), otherwise respond to the user that the app is not installed.
+- Open System App: when user ask about system software like Calculator, Calendar then you should open them without checking it with 'is_installed' tool jsut press_key('win') -> type_text('name') -> press_key('enter').
 - Address Bar or Search Bar: hotkey(['ctrl', 'l'])
 
 
