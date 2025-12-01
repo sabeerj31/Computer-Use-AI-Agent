@@ -2,7 +2,10 @@
 ### *An AI agent that can see your screen, understand UI elements, click, type, control your system, and even talk to you—built with Google ADK.*
 
 ---
+## Demo Video
+https://www.youtube.com/watch?v=xXHwVtG8E9g
 
+---
 ## Overview
 
 **Computer-Use-AI-Agent** is a multi-agent AI system that provides **full OS-level control** using natural language or **voice commands**.  
@@ -316,6 +319,13 @@ VisionDesk supports bi-directional voice streaming:
 Voice responses use the **“Puck”** prebuilt voice.
 
 ---
+## Images & Videos:
+<img width="1339" height="595" alt="image" src="https://github.com/user-attachments/assets/62e4757d-4705-4106-b946-cd5131a3d90a" /> 
+<img width="807" height="595" alt="image" src="https://github.com/user-attachments/assets/960a8bc3-7d60-47ee-a537-fb0a046f4a87" />
+
+
+
+---
 
 ## Future Enhancements
 
@@ -344,7 +354,7 @@ Allow the agent to:
 Special thanks to **Kaggle** for hosting the **5-Day AI Agents Intensive Course**.  
 The concepts covered—ADK, multi-agent patterns, MCP tools, and live agent orchestration—were instrumental in building this project.
 
-Without that program, VisionDesk would not have been possible.
+Without that program, this project would not have been possible.
 
 ---
 
