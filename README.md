@@ -218,8 +218,8 @@ Create a `.env` file:
 ```
 GOOGLE_API_KEY=YOUR_KEY_HERE
 
-**Note: gemini-2.0-flash-live-001 will be deprecated on December 09, 2025**
 ```
+**Note: gemini-2.0-flash-live-001 will be deprecated on December 09, 2025**
 
 ---
 
